@@ -38,7 +38,7 @@ async def on_ready():
 
 @bot.command()
 async def hello(ctx):
-    await ctx.send('Hello! I am a bot!')
+    await ctx.send('Greetings! I have been changed in main!')
 
 
 @bot.event
@@ -193,7 +193,6 @@ async def kick(ctx, member: discord.Member = None, *, reason="No reason provided
     await ctx.send(f"{member.mention} has been kicked. Reason: {reason}")
 
 
-
 @kick.error
 async def kick_error(ctx, error):
     """Handles missing permission errors for kick command."""
@@ -209,7 +208,6 @@ async def ban(ctx, member: discord.Member = None, *, reason="No reason provided"
         return
     await member.ban(reason=reason)
     await ctx.send(f"{member.mention} has been banned. Reason: {reason}")
-
 
 
 @ban.error
