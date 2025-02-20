@@ -34,7 +34,8 @@ async def on_ready():
 
 @bot.command()
 async def hello(ctx):
-    await ctx.send('Hello! I am a bot!')
+    await ctx.send('Hey there! I have been modified in dev!')
+
 
 
 @bot.event
