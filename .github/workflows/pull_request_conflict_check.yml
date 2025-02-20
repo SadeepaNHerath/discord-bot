@@ -12,10 +12,13 @@ jobs:
 
       - name: Check for merge conflicts
         run: |
-          git fetch origin main
-          git merge --no-commit --no-ff origin/main || echo "Merge conflicts detected"
+          git fetch origin main  # Change 'main' to your default branch if necessary
+          if ! git merge --no-commit --no-ff origin/main; then
+            echo "Merge conflicts detected"
+            exit 1  # Exit with a non-zero status to indicate failure
+          fi
 
       - name: Notify Discord
-        if: failure()
+        if: failure()  # This will run if the previous step fails
         run: |
-          curl -H "Content-Type: application/json" -X POST -d '{"content": "Merge conflicts detected in pull request!"}' YOUR_DISCORD_WEBHOOK_URL
+          curl -H "Content-Type: application/json" -X POST -d '{"content": "Merge conflicts detected in pull request!"}' ${{ secrets.DISCORD_WEBHOOK_URL }}
