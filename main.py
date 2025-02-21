@@ -129,7 +129,6 @@ async def pause(ctx):
 
 @bot.command()
 async def resume(ctx):
-    """Resumes a paused song."""
     voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice and voice.is_paused():
         voice.resume()
@@ -140,7 +139,6 @@ async def resume(ctx):
 
 @bot.command()
 async def stop(ctx):
-    """Stops the audio."""
     voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice and voice.is_playing():
         voice.stop()
@@ -151,7 +149,6 @@ async def stop(ctx):
 
 @bot.command()
 async def queue(ctx, url: str):
-    """Adds a song to the queue."""
     guild_id = ctx.guild.id
     source = FFmpegPCMAudio(f"music/{url}.mp3")
 
@@ -164,7 +161,6 @@ async def queue(ctx, url: str):
 
 @bot.command()
 async def next(ctx):
-    """Skips to the next song in the queue."""
     guild_id = ctx.guild.id
     voice = ctx.guild.voice_client
 
@@ -178,7 +174,6 @@ async def next(ctx):
 
 @bot.event
 async def on_message(message):
-    """Handles user messages and processes commands."""
     if message.author == bot.user:
         return
 
@@ -218,7 +213,6 @@ async def ban(ctx, member: discord.Member = None, *, reason="No reason provided"
 
 @ban.error
 async def ban_error(ctx, error):
-    """Handles missing permission errors for ban command."""
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You do not have permission to ban members.")
 
