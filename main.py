@@ -7,18 +7,14 @@ from discord.ext import commands
 from discord.ext.commands import has_permissions
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Set up intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# Create bot instance
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Dictionary to store queues for each guild
 queues = {}
 
 
@@ -39,7 +35,6 @@ async def on_ready():
 @bot.command()
 async def hello(ctx):
     await ctx.send('Greetings! I have been changed in main!')
-
 
 @bot.event
 async def on_member_join(member):
@@ -94,7 +89,6 @@ async def leave(ctx):
 
 @bot.command()
 async def play(ctx, url: str = None):
-    """Plays a song or resumes if paused."""
     voice = ctx.voice_client
     if not voice:
         return await ctx.send("I must be in a voice channel to play audio. Use `!join` first.")
@@ -112,7 +106,6 @@ async def play(ctx, url: str = None):
 
 @bot.command()
 async def pause(ctx):
-    """Pauses the current audio."""
     voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice and voice.is_playing():
         voice.pause()
@@ -123,7 +116,6 @@ async def pause(ctx):
 
 @bot.command()
 async def resume(ctx):
-    """Resumes a paused song."""
     voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice and voice.is_paused():
         voice.resume()
@@ -158,13 +150,12 @@ async def queue(ctx, url: str):
 
 @bot.command()
 async def next(ctx):
-    """Skips to the next song in the queue."""
     guild_id = ctx.guild.id
     voice = ctx.guild.voice_client
 
     if guild_id in queues and queues[guild_id]:
-        voice.stop()  # Stop the current song
-        check_queue(ctx)  # Play the next song
+        voice.stop()
+        check_queue(ctx)
         await ctx.send("Skipped to the next song.")
     else:
         await ctx.send("No more songs in the queue.")
@@ -172,7 +163,6 @@ async def next(ctx):
 
 @bot.event
 async def on_message(message):
-    """Handles user messages and processes commands."""
     if message.author == bot.user:
         return
 
@@ -195,7 +185,6 @@ async def kick(ctx, member: discord.Member = None, *, reason="No reason provided
 
 @kick.error
 async def kick_error(ctx, error):
-    """Handles missing permission errors for kick command."""
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You do not have permission to kick members.")
 
@@ -212,7 +201,6 @@ async def ban(ctx, member: discord.Member = None, *, reason="No reason provided"
 
 @ban.error
 async def ban_error(ctx, error):
-    """Handles missing permission errors for ban command."""
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You do not have permission to ban members.")
 
