@@ -7,7 +7,6 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
@@ -31,9 +30,15 @@ jobs:
         pip install poetry
         poetry install --no-dev
 
-    # Step 4: Run tests (adjust if you have specific tests)
-    - name: Run tests
+    # Step 4: Skip running tests if not defined
+    - name: Skip running tests
+      run: echo "No tests defined. Skipping test execution."
+
+    # Step 5: Start the bot (or any other necessary step for your bot)
+    - name: Start the bot
       run: |
-        # If you have test scripts, for example with pytest, run this command:
-        # pytest --maxfail=1 --disable-warnings -q
-        echo "No tests defined yet. Running bot check instead."
+        echo "Starting the bot..."
+        # Command to start the bot, e.g. python main.py or any other start command.
+        # You might want to run it in the background or as a detached process.
+        # Example:
+        # nohup python main.py &
