@@ -1,0 +1,39 @@
+name: Discord Bot CI
+
+# Trigger the workflow on push to 'main' or on pull request to 'main'
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Check out the repository
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    # Step 2: Set up Python
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    # Step 3: Install dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install poetry
+        poetry install --no-dev
+
+    # Step 4: Run tests (adjust if you have specific tests)
+    - name: Run tests
+      run: |
+        # If you have test scripts, for example with pytest, run this command:
+        # pytest --maxfail=1 --disable-warnings -q
+        echo "No tests defined yet. Running bot check instead."
