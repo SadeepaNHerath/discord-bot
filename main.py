@@ -10,19 +10,15 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Header, HTTPException
 from pydantic import json
 
-# Load environment variables
 load_dotenv()
 
-# Set up intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# Create bot instance
 bot = commands.Bot(command_prefix='!', intents=intents)
 app = FastAPI()
 
-# Load config from .env
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT")
 MENTOR_ID = os.getenv("MENTOR_ID")
 MY_ID = os.getenv("MY_ID")
@@ -30,7 +26,6 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 DISCORD_SERVER_ID = int(os.getenv("DISCORD_SERVER_ID"))
 GITHUB_SECRET = os.getenv("GITHUB_SECRET")
 
-# Dictionary to store queues for each guild
 queues = {}
 
 
@@ -175,8 +170,8 @@ async def next(ctx):
     voice = ctx.guild.voice_client
 
     if guild_id in queues and queues[guild_id]:
-        voice.stop()  # Stop the current song
-        check_queue(ctx)  # Play the next song
+        voice.stop()
+        check_queue(ctx)
         await ctx.send("Skipped to the next song.")
     else:
         await ctx.send("No more songs in the queue.")
@@ -235,12 +230,11 @@ import asyncio
 @app.post("/github-webhook")
 async def github_webhook(request: Request, x_github_event: str = Header(None)):
     try:
-        payload = await request.json()  # Ensure the payload is parsed as JSON
+        payload = await request.json()
 
-        print(f"Received GitHub event: {x_github_event}")  # Debug: Check the event
-        print(f"Payload: {json.dumps(payload, indent=2)}")  # Debug: Log the full payload
+        print(f"Received GitHub event: {x_github_event}")
+        print(f"Payload: {json.dumps(payload, indent=2)}")
 
-        # Check if the event type is 'pull_request' or 'push'
         if x_github_event == "pull_request":
             pr_data = payload.get("pull_request", {})
             if not pr_data:
@@ -292,25 +286,19 @@ async def github_webhook(request: Request, x_github_event: str = Header(None)):
 
 
 async def start_server():
-    # Instead of asyncio.run(), run the FastAPI server in an already running loop
     config = uvicorn.Config(app, host="0.0.0.0", port=8000)
     server = uvicorn.Server(config)
     await server.serve()
 
 
-# Run the Discord bot function
 async def start_bot():
-    # Instead of using bot.run() which also tries to start asyncio.run(), we use asyncio.ensure_future
     await bot.start(os.getenv('DISCORD_BOT'))
 
 
-# Main function to run both
 async def main():
-    # Create tasks for both FastAPI and Discord bot and run them concurrently
     task_server = asyncio.create_task(start_server())
     task_bot = asyncio.create_task(start_bot())
 
-    # Wait for both tasks to finish
     await asyncio.gather(task_server, task_bot)
 
 
