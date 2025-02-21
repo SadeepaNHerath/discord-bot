@@ -50,7 +50,7 @@ async def on_ready():
 
 @bot.command()
 async def hello(ctx):
-    await ctx.send('Greetings! I have been changed in main!')
+    await ctx.send('Greetings! I have been changed in dev!')
 
 
 @bot.event
