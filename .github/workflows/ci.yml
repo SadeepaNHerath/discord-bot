@@ -13,6 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    environment: env  # Reference the environment where the secrets are stored
+
     steps:
     # Step 1: Check out the repository
     - name: Checkout code
@@ -31,15 +33,23 @@ jobs:
         pip install poetry
         poetry install --no-dev
 
-    # Step 4: Skip running tests if not defined
+    # Step 4: Set environment variables from GitHub secrets
+    - name: Set environment variables
+      run: |
+        echo "DISCORD_BOT=${{ secrets.DISCORD_BOT }}" >> $GITHUB_ENV
+        echo "RAPIDAPI_KEY=${{ secrets.RAPIDAPI_KEY }}" >> $GITHUB_ENV
+        echo "CHANNEL_ID=${{ secrets.CHANNEL_ID }}" >> $GITHUB_ENV
+        echo "MENTOR_ID=${{ secrets.MENTOR_ID }}" >> $GITHUB_ENV
+        echo "MY_ID=${{ secrets.MY_ID }}" >> $GITHUB_ENV
+        echo "DISCORD_SERVER_ID=${{ secrets.DISCORD_SERVER_ID }}" >> $GITHUB_ENV
+
+    # Step 5: Skip running tests
     - name: Skip running tests
       run: echo "No tests defined. Skipping test execution."
 
-    # Step 5: Start the bot (or any other necessary step for your bot)
+    # Step 6: Start the bot
     - name: Start the bot
       run: |
         echo "Starting the bot..."
-        # Command to start the bot, e.g. python main.py or any other start command.
-        # You might want to run it in the background or as a detached process.
-        # Example:
-        # nohup python main.py &
+        # Command to start the bot (e.g. python main.py)
+        nohup python main.py &

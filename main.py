@@ -24,7 +24,6 @@ MENTOR_ID = os.getenv("MENTOR_ID")
 MY_ID = os.getenv("MY_ID")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 DISCORD_SERVER_ID = int(os.getenv("DISCORD_SERVER_ID"))
-GITHUB_SECRET = os.getenv("GITHUB_SECRET")
 
 queues = {}
 
