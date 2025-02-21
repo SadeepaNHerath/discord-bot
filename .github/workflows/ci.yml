@@ -1,6 +1,5 @@
 name: Discord Bot CI
 
-# Trigger the workflow on push to 'main' or on pull request to 'main'
 on:
   push:
     branches:
@@ -8,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
