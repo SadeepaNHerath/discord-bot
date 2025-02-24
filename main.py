@@ -1,17 +1,18 @@
+import asyncio
+import json  # Ensure json is properly imported
 import os
+from datetime import datetime, timedelta
 
 import discord
-import requests
 import uvicorn
-from discord import FFmpegPCMAudio
-from discord.ext import commands
-from discord.ext.commands import has_permissions
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Header, HTTPException
-from pydantic import json
 
+# Load environment variables
 load_dotenv()
 
+# Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -25,12 +26,17 @@ MY_ID = os.getenv("MY_ID")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 DISCORD_SERVER_ID = int(os.getenv("DISCORD_SERVER_ID"))
 
+# Dictionary to track PRs pending approval
+pending_prs = {}
+
+# Voice queues
 queues = {}
 
 
+# Function to check music queue
 def check_queue(ctx):
     guild_id = ctx.guild.id
-    if queues.get(guild_id):
+    if guild_id in queues and queues[guild_id]:
         voice = ctx.guild.voice_client
         if voice and not voice.is_playing():
             source = queues[guild_id].pop(0)
@@ -40,255 +46,8 @@ def check_queue(ctx):
 @bot.event
 async def on_ready():
     print(f'Bot is ready as {bot.user}')
-
-
-@bot.command()
-async def hello(ctx):
-    await ctx.send('Greetings! I have been changed in dev!')
-
-
-@bot.event
-async def on_member_join(member):
-    joke_url = "https://jokes-always.p.rapidapi.com/family"
-    headers = {
-        "x-rapidapi-key": os.getenv('RAPIDAPI_KEY'),
-        "x-rapidapi-host": "jokes-always.p.rapidapi.com"
-    }
-
-    try:
-        joke_data = requests.get(joke_url, headers=headers).json()
-        joke = joke_data.get('data', "Welcome! I couldn't fetch a joke, but I'm still fun! 😂")
-    except Exception:
-        joke = "Welcome! Unfortunately, I couldn't fetch a joke for you. 😂"
-
-    channel = bot.get_channel(int(os.getenv('CHANNEL_ID')))
-    if channel:
-        await channel.send(f"🎉 **Welcome to the server, {member.mention}!** 🎉\n\n"
-                           f"Here's a joke to get you started:\n\n"
-                           f"**{joke}**\n\n"
-                           "Feel free to introduce yourself and have fun! 😄")
-
-
-@bot.event
-async def on_member_remove(member):
-    channel = bot.get_channel(int(os.getenv('CHANNEL_ID')))
-    if channel:
-        await channel.send(f'Goodbye {member.mention} 😢.')
-
-
-@bot.command()
-async def join(ctx):
-    if ctx.author.voice:
-        channel = ctx.author.voice.channel
-        if ctx.voice_client:
-            await ctx.voice_client.move_to(channel)
-        else:
-            await channel.connect()
-        await ctx.send(f"Joined {channel.name}!")
-    else:
-        await ctx.send("You are not in a voice channel.")
-
-
-@bot.command()
-async def leave(ctx):
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        await ctx.send("Disconnected from voice channel.")
-    else:
-        await ctx.send("I am not in a voice channel.")
-
-
-@bot.command()
-async def play(ctx, url: str = None):
-    """Plays a song or resumes if paused."""
-    voice = ctx.voice_client
-    if not voice:
-        return await ctx.send("I must be in a voice channel to play audio. Use `!join` first.")
-
-    if voice.is_paused():
-        voice.resume()
-        await ctx.send("Resumed the song.")
-    elif url:
-        source = FFmpegPCMAudio(f"music/{url}.mp3")
-        voice.play(source, after=lambda e: check_queue(ctx))
-        await ctx.send(f"Now playing: {url}")
-    else:
-        await ctx.send("Please provide an audio file URL.")
-
-
-@bot.command()
-async def pause(ctx):
-    """Pauses the current audio."""
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if voice and voice.is_playing():
-        voice.pause()
-        await ctx.send("Paused the song.")
-    else:
-        await ctx.send("No song is playing.")
-
-
-@bot.command()
-async def resume(ctx):
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if voice and voice.is_paused():
-        voice.resume()
-        await ctx.send("Resumed the song.")
-    else:
-        await ctx.send("No song is paused.")
-
-
-@bot.command()
-async def stop(ctx):
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if voice and voice.is_playing():
-        voice.stop()
-        await ctx.send("Stopped the song.")
-    else:
-        await ctx.send("No song is playing.")
-
-
-@bot.command()
-async def queue(ctx, url: str):
-    guild_id = ctx.guild.id
-    source = FFmpegPCMAudio(f"music/{url}.mp3")
-
-    if guild_id not in queues:
-        queues[guild_id] = []
-
-    queues[guild_id].append(source)
-    await ctx.send(f"Added to queue. Position: {len(queues[guild_id])}")
-
-
-@bot.command()
-async def next(ctx):
-    guild_id = ctx.guild.id
-    voice = ctx.guild.voice_client
-
-    if guild_id in queues and queues[guild_id]:
-        voice.stop()
-        check_queue(ctx)
-        await ctx.send("Skipped to the next song.")
-    else:
-        await ctx.send("No more songs in the queue.")
-
-
-@bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
-
-    if message.content.lower() == "kill":
-        await message.delete()
-        await message.channel.send("Don't say that again. Otherwise, I will take action.")
-
-    await bot.process_commands(message)
-
-
-@bot.command()
-@has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member = None, *, reason="No reason provided"):
-    if member is None:
-        await ctx.send("Error: You must mention a user to kick.")
-        return
-    await member.kick(reason=reason)
-    await ctx.send(f"{member.mention} has been kicked. Reason: {reason}")
-
-
-@kick.error
-async def kick_error(ctx, error):
-    """Handles missing permission errors for kick command."""
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("You do not have permission to kick members.")
-
-
-@bot.command()
-@has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member = None, *, reason="No reason provided"):
-    if member is None:
-        await ctx.send("Error: You must mention a user to ban.")
-        return
-    await member.ban(reason=reason)
-    await ctx.send(f"{member.mention} has been banned. Reason: {reason}")
-
-
-@ban.error
-async def ban_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("You do not have permission to ban members.")
-
-
-import asyncio
-
-import os
-import json
-import asyncio
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Request, Header, HTTPException
-from discord.ext import tasks
-from app.services.github_service import GitHubPRService
-
-app = FastAPI()
-
-# Dictionary to track PRs pending approval
-pending_prs = {}
-
-
-@app.post("/github-webhook")
-async def github_webhook(request: Request, x_github_event: str = Header(None)):
-    try:
-        payload = await request.json()
-        print(f"Received GitHub event: {x_github_event}")
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-
-        if x_github_event == "pull_request":
-            pr_data = payload.get("pull_request", {})
-            if not pr_data:
-                raise HTTPException(status_code=400, detail="No pull request data found in payload")
-
-            pr_title = pr_data.get("title", "No title")
-            pr_url = pr_data.get("html_url", "No URL")
-            pr_author = pr_data.get("user", {}).get("login", "Unknown")
-            pr_state = pr_data.get("state", "Unknown")
-            conflict_status = pr_data.get("mergeable", False)
-            mergeable_state = pr_data.get("mergeable_state", "unknown")
-            pr_number = pr_data.get("number")
-
-            if pr_state == "open":
-                # Check for conflicts or issues using "PRevent" bot
-                pr_issues = await check_pr_with_prevent(pr_url)
-
-                if not conflict_status or pr_issues:
-                    message = (f"⚠️ **Conflict detected in PR by {pr_author}**: [{pr_title}]({pr_url})\n"
-                               f"<@{os.getenv('MY_ID')}>, please resolve conflicts or issues!")
-
-                    # Store PR for follow-up check
-                    pending_prs[pr_number] = {
-                        "url": pr_url,
-                        "reviewer": os.getenv('MENTOR_ID'),
-                        "created_at": datetime.utcnow()
-                    }
-
-                    # Send message to Discord
-                    channel = bot.get_channel(int(os.getenv("CHANNEL_ID")))
-                    if channel:
-                        await channel.send(message)
-                    else:
-                        print(f"Error: Channel with ID {os.getenv('CHANNEL_ID')} not found.")
-
-            return {"message": "PR processed"}
-
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported GitHub event type")
-
-    except Exception as e:
-        print(f"Error processing webhook: {e}")
-        raise HTTPException(status_code=400, detail="Error processing webhook")
-
-
-async def check_pr_with_prevent(pr_url):
-    """Mock function for checking issues via PRevent bot. Implement actual API call if needed."""
-    # Simulate checking with "PRevent" bot
-    return False  # Change this if PRevent detects an issue
+    if not check_pending_prs.is_running():
+        check_pending_prs.start()  # Ensure the loop starts
 
 
 @tasks.loop(hours=24)
@@ -303,11 +62,11 @@ async def check_pending_prs():
                        f"<@{pr_data['reviewer']}>, please review and merge!")
 
             # Send reminder message to Discord
-            channel = bot.get_channel(int(os.getenv("CHANNEL_ID")))
+            channel = bot.get_channel(CHANNEL_ID)
             if channel:
                 await channel.send(message)
             else:
-                print(f"Error: Channel with ID {os.getenv('CHANNEL_ID')} not found.")
+                print(f"Error: Channel with ID {CHANNEL_ID} not found.")
 
             to_remove.append(pr_number)
 
@@ -318,33 +77,75 @@ async def check_pending_prs():
 
 @check_pending_prs.before_loop
 async def before_check_pending_prs():
+    """Ensure the bot is ready before starting the task."""
     await bot.wait_until_ready()
 
 
-# Start the reminder loop
-check_pending_prs.start()
+# FastAPI webhook for GitHub events
+@app.post("/github-webhook")
+async def github_webhook(request: Request, x_github_event: str = Header(None)):
+    try:
+        payload = await request.json()
+
+        print(f"Received GitHub event: {x_github_event}")
+        print(f"Payload: {json.dumps(payload, indent=2)}")
+
+        if x_github_event == "pull_request":
+            pr_data = payload.get("pull_request", {})
+            if not pr_data:
+                raise HTTPException(status_code=400, detail="No pull request data found in payload")
+
+            pr_title = pr_data.get("title", "No title")
+            pr_url = pr_data.get("html_url", "No URL")
+            pr_author = pr_data.get("user", {}).get("login", "Unknown")
+            pr_state = pr_data.get("state", "Unknown")
+            conflict_status = pr_data.get("mergeable", False)
+            mergeable_state = pr_data.get("mergeable_state", "unknown")
+
+            if pr_state == "open" and not conflict_status:
+                reviewer_id = MENTOR_ID  # Assign the mentor as the reviewer
+                pending_prs[pr_data.get("number")] = {
+                    "created_at": datetime.utcnow(),
+                    "reviewer": reviewer_id,
+                    "url": pr_url,
+                }
+
+                message = f"⚠️ **Conflict in PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{reviewer_id}>, resolve conflicts!"
+                channel = bot.get_channel(CHANNEL_ID)
+                if channel:
+                    await channel.send(message)
+                else:
+                    print(f"Error: Channel with ID {CHANNEL_ID} not found.")
+
+            return {"message": "PR processed"}
+
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported GitHub event type")
+
+    except Exception as e:
+        print(f"Error processing webhook: {e}")
+        raise HTTPException(status_code=400, detail="Error processing webhook")
 
 
 async def start_server():
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+    """Start the FastAPI server."""
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()
 
 
 async def start_bot():
-    await bot.start(os.getenv('DISCORD_BOT'))
+    """Start the Discord bot."""
+    await bot.start(DISCORD_BOT_TOKEN)
 
 
 async def main():
-    task_server = asyncio.create_task(start_server())
-    task_bot = asyncio.create_task(start_bot())
-
-    await asyncio.gather(task_server, task_bot)
+    """Run both the FastAPI server and Discord bot concurrently."""
+    await asyncio.gather(start_server(), start_bot())
 
 
 if __name__ == "__main__":
-    token = os.getenv('DISCORD_BOT')
-    if not token:
+    if not DISCORD_BOT_TOKEN:
         print("Error: DISCORD_BOT environment variable not set.")
     else:
-        bot.run(token)
+        asyncio.run(main())  # Use asyncio.run to handle event loop correctly
