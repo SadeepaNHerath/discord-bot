@@ -219,12 +219,24 @@ async def ban_error(ctx, error):
 
 import asyncio
 
+import os
+import json
+import asyncio
+from datetime import datetime, timedelta
+from fastapi import FastAPI, Request, Header, HTTPException
+from discord.ext import tasks
+from app.services.github_service import GitHubPRService
+
+app = FastAPI()
+
+# Dictionary to track PRs pending approval
+pending_prs = {}
+
 
 @app.post("/github-webhook")
 async def github_webhook(request: Request, x_github_event: str = Header(None)):
     try:
         payload = await request.json()
-
         print(f"Received GitHub event: {x_github_event}")
         print(f"Payload: {json.dumps(payload, indent=2)}")
 
@@ -237,38 +249,33 @@ async def github_webhook(request: Request, x_github_event: str = Header(None)):
             pr_url = pr_data.get("html_url", "No URL")
             pr_author = pr_data.get("user", {}).get("login", "Unknown")
             pr_state = pr_data.get("state", "Unknown")
-            conflict_status = pr_data.get("mergeable", False)  # Default to False if not provided
+            conflict_status = pr_data.get("mergeable", False)
             mergeable_state = pr_data.get("mergeable_state", "unknown")
+            pr_number = pr_data.get("number")
 
             if pr_state == "open":
-                if conflict_status:
-                    message = f"🟢 **New PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MENTOR_ID')}>, please review!"
-                else:
-                    if mergeable_state == "clean":
-                        message = f"⚠️ **Conflict resolved in PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MENTOR_ID')}>, please review!"
-                    else:
-                        message = f"⚠️ **Conflict in PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MY_ID')}>, resolve conflicts!"
+                # Check for conflicts or issues using "PRevent" bot
+                pr_issues = await check_pr_with_prevent(pr_url)
 
-                # Send the message to the channel (assuming you have bot logic here)
-                channel = bot.get_channel(CHANNEL_ID)
-                if channel:
-                    await channel.send(message)
-                else:
-                    print(f"Error: Channel with ID {CHANNEL_ID} not found.")
+                if not conflict_status or pr_issues:
+                    message = (f"⚠️ **Conflict detected in PR by {pr_author}**: [{pr_title}]({pr_url})\n"
+                               f"<@{os.getenv('MY_ID')}>, please resolve conflicts or issues!")
+
+                    # Store PR for follow-up check
+                    pending_prs[pr_number] = {
+                        "url": pr_url,
+                        "reviewer": os.getenv('MENTOR_ID'),
+                        "created_at": datetime.utcnow()
+                    }
+
+                    # Send message to Discord
+                    channel = bot.get_channel(int(os.getenv("CHANNEL_ID")))
+                    if channel:
+                        await channel.send(message)
+                    else:
+                        print(f"Error: Channel with ID {os.getenv('CHANNEL_ID')} not found.")
 
             return {"message": "PR processed"}
-
-        elif x_github_event == "push":
-            repo_name = payload.get("repository", {}).get("full_name", "Unknown Repository")
-            commit_message = payload.get("head_commit", {}).get("message", "No commit message")
-            message = f"🔄 New push to `{repo_name}`: `{commit_message}`. Re-checking PR conflicts..."
-            channel = bot.get_channel(CHANNEL_ID)
-            if channel:
-                await channel.send(message)
-            else:
-                print(f"Error: Channel with ID {CHANNEL_ID} not found.")
-
-            return {"message": "Push processed"}
 
         else:
             raise HTTPException(status_code=400, detail="Unsupported GitHub event type")
@@ -276,6 +283,46 @@ async def github_webhook(request: Request, x_github_event: str = Header(None)):
     except Exception as e:
         print(f"Error processing webhook: {e}")
         raise HTTPException(status_code=400, detail="Error processing webhook")
+
+
+async def check_pr_with_prevent(pr_url):
+    """Mock function for checking issues via PRevent bot. Implement actual API call if needed."""
+    # Simulate checking with "PRevent" bot
+    return False  # Change this if PRevent detects an issue
+
+
+@tasks.loop(hours=24)
+async def check_pending_prs():
+    """Remind reviewers to approve PRs that haven't been merged in 24 hours."""
+    now = datetime.utcnow()
+    to_remove = []
+
+    for pr_number, pr_data in pending_prs.items():
+        if (now - pr_data["created_at"]) >= timedelta(days=1):
+            message = (f"⏳ **PR pending approval:** {pr_data['url']}\n"
+                       f"<@{pr_data['reviewer']}>, please review and merge!")
+
+            # Send reminder message to Discord
+            channel = bot.get_channel(int(os.getenv("CHANNEL_ID")))
+            if channel:
+                await channel.send(message)
+            else:
+                print(f"Error: Channel with ID {os.getenv('CHANNEL_ID')} not found.")
+
+            to_remove.append(pr_number)
+
+    # Remove reminded PRs
+    for pr_number in to_remove:
+        del pending_prs[pr_number]
+
+
+@check_pending_prs.before_loop
+async def before_check_pending_prs():
+    await bot.wait_until_ready()
+
+
+# Start the reminder loop
+check_pending_prs.start()
 
 
 async def start_server():
