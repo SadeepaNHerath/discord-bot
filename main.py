@@ -47,6 +47,7 @@ async def on_ready():
 async def hello(ctx):
     await ctx.send('Hello! How can I assist you today?')
 
+
 @bot.event
 async def on_member_join(member):
     joke_url = "https://jokes-always.p.rapidapi.com/family"
@@ -84,6 +85,8 @@ async def joinvoice(ctx):
         channel = ctx.author.voice.channel
         if ctx.voice_client:
             await ctx.voice_client.move_to(channel)
+            await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="!joinvoice"),
+                                      status=discord.Status.do_not_disturb)
         else:
             await channel.connect()
         await ctx.send(f"Joined {channel.name}!")
@@ -95,6 +98,7 @@ async def joinvoice(ctx):
 async def leave(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
+        await bot.change_presence(status=discord.Status.online)
         await ctx.send("Disconnected from voice channel.")
     else:
         await ctx.send("I am not in a voice channel.")
@@ -224,6 +228,7 @@ async def ban_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You do not have permission to ban members.")
 
+
 @bot.command()
 async def embed(ctx):
     embed = discord.Embed(
@@ -235,7 +240,6 @@ async def embed(ctx):
     embed.set_author(name=ctx.author.name, icon_url=ctx.author.avatar.url)
     embed.set_footer(text="Embed Footer")
     await ctx.send(embed=embed)
-
 
 
 async def start_server():
