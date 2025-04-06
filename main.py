@@ -241,6 +241,13 @@ async def embed(ctx):
     embed.set_footer(text="Embed Footer")
     await ctx.send(embed=embed)
 
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send("Command not found. Use `!help` for a list of available commands.")
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You do not have permission to use this command.")
+
 
 async def start_server():
     config = uvicorn.Config(app, host="0.0.0.0", port=8000)
