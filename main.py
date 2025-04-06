@@ -1,14 +1,14 @@
+import asyncio
 import os
 
+import aiohttp
 import discord
-import requests
 import uvicorn
 from discord import FFmpegPCMAudio
 from discord.ext import commands
 from discord.ext.commands import has_permissions
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Header, HTTPException
-from pydantic import json
+from fastapi import FastAPI
 
 load_dotenv()
 
@@ -24,6 +24,7 @@ MENTOR_ID = os.getenv("MENTOR_ID")
 MY_ID = os.getenv("MY_ID")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 DISCORD_SERVER_ID = int(os.getenv("DISCORD_SERVER_ID"))
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 
 queues = {}
 
@@ -44,24 +45,25 @@ async def on_ready():
 
 @bot.command()
 async def hello(ctx):
-    await ctx.send('Greetings! I have been changed in dev!')
-
+    await ctx.send('Hello! How can I assist you today?')
 
 @bot.event
 async def on_member_join(member):
     joke_url = "https://jokes-always.p.rapidapi.com/family"
     headers = {
-        "x-rapidapi-key": os.getenv('RAPIDAPI_KEY'),
+        "x-rapidapi-key": RAPIDAPI_KEY,
         "x-rapidapi-host": "jokes-always.p.rapidapi.com"
     }
 
-    try:
-        joke_data = requests.get(joke_url, headers=headers).json()
-        joke = joke_data.get('data', "Welcome! I couldn't fetch a joke, but I'm still fun! 😂")
-    except Exception:
-        joke = "Welcome! Unfortunately, I couldn't fetch a joke for you. 😂"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(joke_url, headers=headers) as response:
+                joke_data = await response.json()
+                joke = joke_data.get('data', "Welcome! I couldn't fetch a joke, but I'm still fun! 😂")
+        except aiohttp.ClientError:
+            joke = "Welcome! Unfortunately, I couldn't fetch a joke for you. 😂"
 
-    channel = bot.get_channel(int(os.getenv('CHANNEL_ID')))
+    channel = bot.get_channel(CHANNEL_ID)
     if channel:
         await channel.send(f"🎉 **Welcome to the server, {member.mention}!** 🎉\n\n"
                            f"Here's a joke to get you started:\n\n"
@@ -71,13 +73,13 @@ async def on_member_join(member):
 
 @bot.event
 async def on_member_remove(member):
-    channel = bot.get_channel(int(os.getenv('CHANNEL_ID')))
+    channel = bot.get_channel(CHANNEL_ID)
     if channel:
         await channel.send(f'Goodbye {member.mention} 😢.')
 
 
 @bot.command()
-async def join(ctx):
+async def joinvoice(ctx):
     if ctx.author.voice:
         channel = ctx.author.voice.channel
         if ctx.voice_client:
@@ -163,7 +165,7 @@ async def queue(ctx, url: str):
 
 
 @bot.command()
-async def next(ctx):
+async def nextsong(ctx):
     """Skips to the next song in the queue."""
     guild_id = ctx.guild.id
     voice = ctx.guild.voice_client
@@ -222,66 +224,18 @@ async def ban_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You do not have permission to ban members.")
 
+@bot.command()
+async def embed(ctx):
+    embed = discord.Embed(
+        title="Embed Title",
+        description="Embed Description",
+        url="https://example.com",
+        color=discord.Color.blue()
+    )
+    embed.set_author(name=ctx.author.name, icon_url=ctx.author.avatar.url)
+    embed.set_footer(text="Embed Footer")
+    await ctx.send(embed=embed)
 
-import asyncio
-
-
-@app.post("/github-webhook")
-async def github_webhook(request: Request, x_github_event: str = Header(None)):
-    try:
-        payload = await request.json()
-
-        print(f"Received GitHub event: {x_github_event}")
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-
-        if x_github_event == "pull_request":
-            pr_data = payload.get("pull_request", {})
-            if not pr_data:
-                raise HTTPException(status_code=400, detail="No pull request data found in payload")
-
-            pr_title = pr_data.get("title", "No title")
-            pr_url = pr_data.get("html_url", "No URL")
-            pr_author = pr_data.get("user", {}).get("login", "Unknown")
-            pr_state = pr_data.get("state", "Unknown")
-            conflict_status = pr_data.get("mergeable", False)  # Default to False if not provided
-            mergeable_state = pr_data.get("mergeable_state", "unknown")
-
-            if pr_state == "open":
-                if conflict_status:
-                    message = f"🟢 **New PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MENTOR_ID')}>, please review!"
-                else:
-                    if mergeable_state == "clean":
-                        message = f"⚠️ **Conflict resolved in PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MENTOR_ID')}>, please review!"
-                    else:
-                        message = f"⚠️ **Conflict in PR by {pr_author}**: [{pr_title}]({pr_url})\n<@{os.getenv('MY_ID')}>, resolve conflicts!"
-
-                # Send the message to the channel (assuming you have bot logic here)
-                channel = bot.get_channel(CHANNEL_ID)
-                if channel:
-                    await channel.send(message)
-                else:
-                    print(f"Error: Channel with ID {CHANNEL_ID} not found.")
-
-            return {"message": "PR processed"}
-
-        elif x_github_event == "push":
-            repo_name = payload.get("repository", {}).get("full_name", "Unknown Repository")
-            commit_message = payload.get("head_commit", {}).get("message", "No commit message")
-            message = f"🔄 New push to `{repo_name}`: `{commit_message}`. Re-checking PR conflicts..."
-            channel = bot.get_channel(CHANNEL_ID)
-            if channel:
-                await channel.send(message)
-            else:
-                print(f"Error: Channel with ID {CHANNEL_ID} not found.")
-
-            return {"message": "Push processed"}
-
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported GitHub event type")
-
-    except Exception as e:
-        print(f"Error processing webhook: {e}")
-        raise HTTPException(status_code=400, detail="Error processing webhook")
 
 
 async def start_server():
@@ -291,7 +245,7 @@ async def start_server():
 
 
 async def start_bot():
-    await bot.start(os.getenv('DISCORD_BOT'))
+    await bot.start(DISCORD_BOT_TOKEN)
 
 
 async def main():
@@ -302,8 +256,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    token = os.getenv('DISCORD_BOT')
-    if not token:
+    if not DISCORD_BOT_TOKEN:
         print("Error: DISCORD_BOT environment variable not set.")
     else:
-        bot.run(token)
+        bot.run(DISCORD_BOT_TOKEN)
