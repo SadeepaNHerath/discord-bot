@@ -202,7 +202,12 @@ async def kick(ctx, member: discord.Member = None, *, reason="No reason provided
         await ctx.send("Error: You must mention a user to kick.")
         return
     await member.kick(reason=reason)
-    await ctx.send(f"{member.mention} has been kicked. Reason: {reason}")
+    embed = discord.Embed(
+        title="User Kicked",
+        description=f"{member.mention} has been kicked. Reason: {reason}",
+        color=discord.Color.red()
+    )
+    await member.send(embed=embed)
 
 
 @kick.error
