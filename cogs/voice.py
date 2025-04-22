@@ -1,12 +1,9 @@
 import asyncio
-import logging
 import time
 
-import discord
-from discord import FFmpegPCMAudio, PCMVolumeTransformer
-from discord.ext import commands
-
-logger = logging.getLogger("discord_bot")
+import nextcord
+from nextcord import FFmpegPCMAudio, PCMVolumeTransformer
+from nextcord.ext import commands
 
 class Voice(commands.Cog):
     """Voice channel functionality for the Discord bot."""
@@ -24,13 +21,11 @@ class Voice(commands.Cog):
         self.track_start_time = {}
         self.inactive_voice_clients = {}
         self.disconnect_task = {}
-        logger.info("Voice cog initialized")
 
     @commands.Cog.listener()
     async def on_ready(self):
         """Called when the bot is ready."""
-        logger.info("Voice cog ready")
-        # No additional code here - we don't want to create additional instances!
+        pass
 
     def check_queue(self, ctx):
         guild_id = ctx.guild.id
@@ -43,25 +38,26 @@ class Voice(commands.Cog):
                 self.currently_playing[guild_id] = {'source': source, 'name': track_name}
                 self.track_start_time[guild_id] = time.time()
 
-                # Only send message if not called from queue_audio
                 if not getattr(ctx, 'skip_message', False):
-                    embed = discord.Embed(
+                    embed = nextcord.Embed(
                         title="🎵 Now Playing",
                         description=f"**{track_name}**",
-                        color=discord.Color.blue()
+                        color=nextcord.Color.blue()
                     )
                     self.bot.loop.create_task(ctx.send(embed=embed))
 
-                # Reset inactive timer
                 if guild_id in self.disconnect_task and not self.disconnect_task[guild_id].done():
                     self.disconnect_task[guild_id].cancel()
 
+        if guild_id not in self.queues or not self.queues[guild_id]:
+            self.disconnect_task[guild_id] = self.bot.loop.create_task(self.disconnect_after_inactivity(ctx))
+
     def play_next(self, ctx, error):
         if error:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="❌ Playback Error",
                 description=f"An error occurred during playback: {str(error)}",
-                color=discord.Color.red()
+                color=nextcord.Color.red()
             )
             self.bot.loop.create_task(ctx.send(embed=embed))
 
@@ -73,17 +69,18 @@ class Voice(commands.Cog):
 
         # Start inactivity timer if queue is empty
         if guild_id not in self.queues or not self.queues[guild_id]:
-            self.disconnect_task[guild_id] = asyncio.create_task(self.disconnect_after_inactivity(ctx))
+            # Make sure to use bot's loop for creating tasks
+            self.disconnect_task[guild_id] = self.bot.loop.create_task(self.disconnect_after_inactivity(ctx))
 
     async def disconnect_after_inactivity(self, ctx):
         await asyncio.sleep(self.INACTIVITY_TIMEOUT)
         voice_client = ctx.guild.voice_client
         if voice_client and not voice_client.is_playing():
             await voice_client.disconnect()
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🔌 Disconnected",
                 description="Disconnected due to inactivity",
-                color=discord.Color.light_grey()
+                color=nextcord.Color.light_grey()
             )
             await ctx.send(embed=embed)
 
@@ -91,31 +88,41 @@ class Voice(commands.Cog):
     async def join_voice(self, ctx):
         if ctx.author.voice:
             channel = ctx.author.voice.channel
-            if ctx.voice_client:
-                await ctx.voice_client.move_to(channel)
-            else:
-                await channel.connect()
-
-            embed = discord.Embed(
-                title="🎧 Voice Channel Joined",
-                description=f"Connected to **{channel.name}**",
-                color=discord.Color.green()
-            )
-            await ctx.send(embed=embed)
+            try:
+                # Clean up eisting voice client if any
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                
+                # Use the bot's loop when making voice connections
+                voice_client = await channel.connect(reconnect=True, cls=nextcord.VoiceClient)
+                
+                embed = nextcord.Embed(
+                    title="🎧 Voice Channel Joined",
+                    description=f"Connected to **{channel.name}**",
+                    color=nextcord.Color.green()
+                )
+                await ctx.send(embed=embed)
+            except Exception as e:
+                embed = nextcord.Embed(
+                    title="❌ Connection Error",
+                    description="Could not connect to voice channel. Please try again later.",
+                    color=nextcord.Color.red()
+                )
+                await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="❌ Error",
                 description="You need to be in a voice channel first",
-                color=discord.Color.red()
+                color=nextcord.Color.red()
             )
             await ctx.send(embed=embed)
 
     @join_voice.error
     async def join_voice_error(self, ctx, error):
-        embed = discord.Embed(
+        embed = nextcord.Embed(
             title="❌ Connection Error",
             description=f"Could not connect to voice channel: {str(error)}",
-            color=discord.Color.red()
+            color=nextcord.Color.red()
         )
         await ctx.send(embed=embed)
 
@@ -136,37 +143,72 @@ class Voice(commands.Cog):
 
             await ctx.voice_client.disconnect()
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="👋 Disconnected",
                 description="Successfully left the voice channel",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="I'm not currently in a voice channel",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
     @commands.command(name="play", help="Play an audio file from the given name")
     async def play_audio(self, ctx, *, track_name: str = None):
-        voice = ctx.voice_client
-        if not voice:
-            embed = discord.Embed(
+        # Try to join voice channel if not connected
+        if not ctx.voice_client and ctx.author.voice:
+            try:
+                # Use the bot's loop
+                await ctx.author.voice.channel.connect(reconnect=True, cls=nextcord.VoiceClient)
+            except Exception as e:
+                embed = nextcord.Embed(
+                    title="⚠️ Connection Error",
+                    description="Could not connect to voice channel. Please try again later.",
+                    color=nextcord.Color.red()
+                )
+                return await ctx.send(embed=embed)
+        elif not ctx.voice_client:
+            embed = nextcord.Embed(
                 title="⚠️ Not Connected",
-                description="I must be in a voice channel to play audio. Use `!join` first",
-                color=discord.Color.gold()
+                description="You need to be in a voice channel for me to play audio",
+                color=nextcord.Color.gold()
             )
             return await ctx.send(embed=embed)
+        
+        # Get voice client after ensuring connection
+        voice = ctx.voice_client
+        
+        if not voice:
+            # If not connected, try to join the voice channel automatically
+            if ctx.author.voice:
+                try:
+                    # Use the bot's loop
+                    voice = await ctx.author.voice.channel.connect(reconnect=True, cls=nextcord.VoiceClient)
+                except Exception as e:
+                    embed = nextcord.Embed(
+                        title="⚠️ Connection Error",
+                        description=f"Could not connect to voice channel: {str(e)}",
+                        color=nextcord.Color.red()
+                    )
+                    return await ctx.send(embed=embed)
+            else:
+                embed = nextcord.Embed(
+                    title="⚠️ Not Connected",
+                    description="I must be in a voice channel to play audio. Use `!join` first",
+                    color=nextcord.Color.gold()
+                )
+                return await ctx.send(embed=embed)
 
         if voice.is_paused():
             voice.resume()
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="▶️ Resumed",
                 description="Playback has been resumed",
-                color=discord.Color.green()
+                color=nextcord.Color.green()
             )
             await ctx.send(embed=embed)
         elif track_name:
@@ -182,10 +224,10 @@ class Voice(commands.Cog):
 
                     self.queues[guild_id].append(source)
 
-                    embed = discord.Embed(
+                    embed = nextcord.Embed(
                         title="🎵 Added to Queue",
                         description=f"**{track_name}** added to queue at position #{len(self.queues[guild_id])}",
-                        color=discord.Color.blue()
+                        color=nextcord.Color.blue()
                     )
                     await ctx.send(embed=embed)
                 else:
@@ -194,24 +236,24 @@ class Voice(commands.Cog):
                     self.currently_playing[ctx.guild.id] = {'source': source, 'name': track_name}
                     self.track_start_time[ctx.guild.id] = time.time()
 
-                    embed = discord.Embed(
+                    embed = nextcord.Embed(
                         title="🎵 Now Playing",
                         description=f"**{track_name}**",
-                        color=discord.Color.blue()
+                        color=nextcord.Color.blue()
                     )
                     await ctx.send(embed=embed)
             except Exception as e:
-                embed = discord.Embed(
+                embed = nextcord.Embed(
                     title="❌ Playback Error",
                     description=f"Could not play the track: {str(e)}",
-                    color=discord.Color.red()
+                    color=nextcord.Color.red()
                 )
                 await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="⚠️ Missing Information",
                 description="Please provide a track name to play",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -230,10 +272,10 @@ class Voice(commands.Cog):
             position = len(self.queues[guild_id]) + 1
             self.queues[guild_id].append(source)
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🎵 Added to Queue",
                 description=f"**{track_name}** added to queue at position #{position}",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
 
@@ -243,10 +285,10 @@ class Voice(commands.Cog):
                 ctx.skip_message = True  # Flag to avoid duplicate announcement
                 self.check_queue(ctx)
         except Exception as e:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="❌ Queue Error",
                 description=f"Could not add track to queue: {str(e)}",
-                color=discord.Color.red()
+                color=nextcord.Color.red()
             )
             await ctx.send(embed=embed)
 
@@ -255,17 +297,17 @@ class Voice(commands.Cog):
         voice = ctx.voice_client
         if voice and voice.is_playing():
             voice.pause()
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="⏸️ Paused",
                 description="Audio playback has been paused",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is playing right now",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -274,17 +316,17 @@ class Voice(commands.Cog):
         voice = ctx.voice_client
         if voice and voice.is_paused():
             voice.resume()
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="▶️ Resumed",
                 description="Audio playback has been resumed",
-                color=discord.Color.green()
+                color=nextcord.Color.green()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is paused right now",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -308,20 +350,20 @@ class Voice(commands.Cog):
             if guild_id in self.currently_playing:
                 self.currently_playing.pop(guild_id)
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="⏹️ Stopped",
                 description=f"Stopped playing **{current_track}**",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
 
             # Start inactivity timer
-            self.disconnect_task[guild_id] = asyncio.create_task(self.disconnect_after_inactivity(ctx))
+            self.disconnect_task[guild_id] = self.bot.loop.create_task(self.disconnect_after_inactivity(ctx))
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is playing right now",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -337,44 +379,44 @@ class Voice(commands.Cog):
 
             voice.stop()  # This will trigger the after function which calls check_queue
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="⏭️ Skipped",
                 description=f"Skipped **{current_track}**",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is playing to skip",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
     @commands.command(name="volume", help="Set the volume of the audio (0-100)")
     async def set_volume(self, ctx, volume: int):
         if not self.MIN_VOLUME <= volume <= self.MAX_VOLUME:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="⚠️ Invalid Volume",
                 description=f"Volume must be between {self.MIN_VOLUME} and {self.MAX_VOLUME}",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             return await ctx.send(embed=embed)
 
         voice = ctx.voice_client
         if voice and voice.source:
             voice.source.volume = volume / 100
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🔊 Volume Changed",
                 description=f"Volume set to **{volume}%**",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is playing right now",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -392,10 +434,10 @@ class Voice(commands.Cog):
                 minutes, seconds = divmod(elapsed_seconds, 60)
                 elapsed = f"{minutes}:{seconds:02d}"
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🎵 Now Playing",
                 description=f"**{track_name}**",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             embed.add_field(name="Elapsed Time", value=elapsed, inline=True)
 
@@ -405,10 +447,10 @@ class Voice(commands.Cog):
 
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="Nothing is playing right now",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -419,17 +461,17 @@ class Voice(commands.Cog):
             queue_length = len(self.queues[guild_id])
             self.queues[guild_id] = []
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🧹 Queue Cleared",
                 description=f"Cleared {queue_length} tracks from the queue",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Information",
                 description="The queue is already empty",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -444,18 +486,18 @@ class Voice(commands.Cog):
 
             queue_text = "\n".join(queue_list)
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🎶 Current Queue",
                 description=queue_text,
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             embed.set_footer(text=f"Total tracks: {len(self.queues[guild_id])}")
             await ctx.send(embed=embed)
         else:
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="ℹ️ Queue Information",
                 description="The queue is currently empty",
-                color=discord.Color.gold()
+                color=nextcord.Color.gold()
             )
             await ctx.send(embed=embed)
 
@@ -467,19 +509,19 @@ class Voice(commands.Cog):
         if before.channel is None and after.channel is not None:
             channel = self.bot.get_channel(self.bot.CHANNEL_ID)
             if channel:
-                embed = discord.Embed(
+                embed = nextcord.Embed(
                     title="🎤 Voice Activity",
                     description=f"{member.mention} joined {after.channel.name}",
-                    color=discord.Color.green()
+                    color=nextcord.Color.green()
                 )
                 await channel.send(embed=embed)
         elif before.channel is not None and after.channel is None:
             channel = self.bot.get_channel(self.bot.CHANNEL_ID)
             if channel:
-                embed = discord.Embed(
+                embed = nextcord.Embed(
                     title="🎤 Voice Activity",
                     description=f"{member.mention} left {before.channel.name}",
-                    color=discord.Color.gold()
+                    color=nextcord.Color.gold()
                 )
                 await channel.send(embed=embed)
 
@@ -501,7 +543,8 @@ class Voice(commands.Cog):
                                 break
 
                         if text_channel:
-                            self.disconnect_task[guild_id] = asyncio.create_task(
+                            # Use the bot's loop for task creation
+                            self.disconnect_task[guild_id] = self.bot.loop.create_task(
                                 self.auto_disconnect(voice_client, text_channel, guild_id)
                             )
 
@@ -517,19 +560,18 @@ class Voice(commands.Cog):
             if guild_id in self.currently_playing:
                 self.currently_playing.pop(guild_id)
 
-            embed = discord.Embed(
+            embed = nextcord.Embed(
                 title="🔌 Auto-Disconnected",
                 description="Left the voice channel because I was alone",
-                color=discord.Color.blue()
+                color=nextcord.Color.blue()
             )
             await text_channel.send(embed=embed)
 
 
-async def setup(bot):
+def setup(bot):
     # Check if Voice cog is already loaded to prevent duplicate instances
     if 'Voice' in bot.cogs:
-        logger.warning("Voice cog is already loaded! Skipping loading another instance.")
-        return
+        return bot.add_cog  # Return a valid callable instead of True
         
-    await bot.add_cog(Voice(bot))
-    logger.info("Voice cog added through setup()")
+    bot.add_cog(Voice(bot))
+    return bot.add_cog  # Return a valid callable instead of True

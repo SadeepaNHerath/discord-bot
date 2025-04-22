@@ -1,19 +1,15 @@
-import logging
-import discord
-from discord.ext import commands
-
-logger = logging.getLogger("discord_bot")
+import nextcord
+from nextcord.ext import commands
 
 class Moderation(commands.Cog):
     """Moderation commands for server administrators."""
     
     def __init__(self, bot):
         self.bot = bot
-        logger.info("Moderation cog initialized")
 
     @commands.command()
     @commands.has_permissions(kick_members=True)
-    async def kick(self, ctx, member: discord.Member = None, *, reason="No reason provided"):
+    async def kick(self, ctx, member: nextcord.Member = None, *, reason="No reason provided"):
         """Kick a member from the server with an optional reason."""
         if member is None:
             await ctx.send("Error: You must mention a user to kick.")
@@ -41,14 +37,14 @@ class Moderation(commands.Cog):
             
         try:
             await member.send(f"You have been kicked from {ctx.guild.name} for the following reason: {reason}")
-        except discord.Forbidden:
+        except nextcord.Forbidden:
             await ctx.send("Could not send a DM to the user.")
             
         await member.kick(reason=reason)
-        embed = discord.Embed(
+        embed = nextcord.Embed(
             title="User Kicked",
             description=f"{member.mention} has been kicked. Reason: {reason}",
-            color=discord.Color.red()
+            color=nextcord.Color.red()
         )
         await ctx.send(embed=embed)
 
@@ -62,7 +58,7 @@ class Moderation(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx, member: discord.Member = None, *, reason="No reason provided"):
+    async def ban(self, ctx, member: nextcord.Member = None, *, reason="No reason provided"):
         """Ban a member from the server with an optional reason."""
         if member is None:
             await ctx.send("Error: You must mention a user to ban.")
@@ -90,14 +86,14 @@ class Moderation(commands.Cog):
             
         try:
             await member.send(f"You have been banned from {ctx.guild.name} for the following reason: {reason}")
-        except discord.Forbidden:
+        except nextcord.Forbidden:
             await ctx.send("Could not send a DM to the user.")
             
         await member.ban(reason=reason)
-        embed = discord.Embed(
+        embed = nextcord.Embed(
             title="User Banned",
             description=f"{member.mention} has been banned. Reason: {reason}",
-            color=discord.Color.red()
+            color=nextcord.Color.red()
         )
         await ctx.send(embed=embed)
 
@@ -119,14 +115,14 @@ class Moderation(commands.Cog):
             if member_id_or_name.isdigit():
                 user = await self.bot.fetch_user(int(member_id_or_name))
                 await ctx.guild.unban(user)
-                embed = discord.Embed(
+                embed = nextcord.Embed(
                     title="User Unbanned",
                     description=f"{user.mention} has been unbanned.",
-                    color=discord.Color.green()
+                    color=nextcord.Color.green()
                 )
                 await ctx.send(embed=embed)
                 return
-        except discord.NotFound:
+        except nextcord.NotFound:
             pass
             
         # If not ID or ID lookup failed, try name#discriminator format
@@ -139,10 +135,10 @@ class Moderation(commands.Cog):
                     user = ban_entry.user
                     if (user.name, user.discriminator) == (member_name, member_discriminator):
                         await ctx.guild.unban(user)
-                        embed = discord.Embed(
+                        embed = nextcord.Embed(
                             title="User Unbanned",
                             description=f"{user.mention} has been unbanned.",
-                            color=discord.Color.green()
+                            color=nextcord.Color.green()
                         )
                         await ctx.send(embed=embed)
                         return
@@ -160,5 +156,6 @@ class Moderation(commands.Cog):
             await ctx.send("Invalid member specified.")
 
 
-async def setup(bot):
-    await bot.add_cog(Moderation(bot))
+def setup(bot):
+    bot.add_cog(Moderation(bot))
+    return bot.add_cog  # Return a valid callable instead of True

@@ -1,22 +1,29 @@
 import asyncio
 import os
 import sys
+# import logging - removed
 
-import discord
+import nextcord
 import uvicorn
-from discord.ext import commands
+from nextcord.ext import commands
 from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# Removed logging configuration
 
 # Load environment variables
 load_dotenv()
 
-# Set up Discord bot
-intents = discord.Intents.default()
+# Set up Discord bot with specific event loop to ensure consistency
+intents = nextcord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+# Create a single loop for everything to use
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+bot = commands.Bot(command_prefix='!', intents=intents, loop=loop)
 app = FastAPI()
 
 # Environment variables
@@ -39,8 +46,8 @@ bot.CHANNEL_ID = CHANNEL_ID
 async def on_ready():
     print(f"Bot is ready as {bot.user}")
     await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.listening,
+        activity=nextcord.Activity(
+            type=nextcord.ActivityType.listening,
             name="!help for commands"
         )
     )
@@ -55,7 +62,7 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.BadArgument):
         await ctx.send("Bad argument. Please check your input.")
     else:
-        print(f"Unhandled error: {error}")
+        # Changed from print to just sending message to user
         await ctx.send("An error occurred while executing the command.")
 
 
@@ -63,10 +70,11 @@ async def load_cogs():
     cog_modules = ['cogs.general', 'cogs.moderation', 'cogs.voice']
     for cog in cog_modules:
         try:
-            await bot.load_extension(cog)
-            print(f"Loaded extension: {cog}")
+            bot.load_extension(cog)
+            # Removed print statement
         except Exception as e:
-            print(f"Failed to load cog {cog}: {e}")
+            # Removed print statement for error
+            pass
 
 
 async def start_server():
@@ -75,15 +83,22 @@ async def start_server():
     await server.serve()
 
 
+# Modify main to use the same loop
 async def main():
+    # Load cogs
     await load_cogs()
-    async with bot:
-        bot.loop.create_task(start_server())
-        await bot.start(DISCORD_BOT_TOKEN)
-
+    
+    # Start the bot
+    await bot.start(DISCORD_BOT_TOKEN)
 
 if __name__ == "__main__":
     if not DISCORD_BOT_TOKEN:
         print("Error: DISCORD_BOT environment variable not set.")
     else:
-        asyncio.run(main())
+        # Use our defined loop
+        try:
+            loop.run_until_complete(main())
+        except KeyboardInterrupt:
+            loop.run_until_complete(bot.close())
+        finally:
+            loop.close()

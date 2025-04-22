@@ -1,10 +1,7 @@
-import logging
 import random
 
 import aiohttp
-from discord.ext import commands, tasks
-
-logger = logging.getLogger("discord_bot")
+from nextcord.ext import commands, tasks
 
 class General(commands.Cog):
     """General purpose commands and event handlers for the Discord bot."""
@@ -14,7 +11,6 @@ class General(commands.Cog):
         self.daily_message.start()
         # Move inappropriate words to a separate file or environment variables in production
         self.banned_words = ["inappropriate_word1", "inappropriate_word2", "inappropriate_word3"]
-        logger.info("General cog initialized")
 
     def cog_unload(self):
         self.daily_message.cancel()
@@ -22,7 +18,7 @@ class General(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         """Called when the bot is ready to start receiving events."""
-        print('General cog ready')
+        pass
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -105,6 +101,7 @@ class General(commands.Cog):
         await self.bot.wait_until_ready()
 
 
-async def setup(bot):
-    await bot.add_cog(General(bot))
-    logger.info("General cog added through setup()")
+# Fix the setup function to work correctly with NextCord
+def setup(bot):
+    bot.add_cog(General(bot))
+    return bot.add_cog  # Return a valid callable instead of True

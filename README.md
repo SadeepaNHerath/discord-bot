@@ -1,6 +1,6 @@
 # Discord Bot
 
-A feature-rich Discord bot with moderation, voice, and general utility commands.
+A feature-rich Discord bot with moderation, voice, and general utility commands built with NextCord.
 
 ## Features
 
